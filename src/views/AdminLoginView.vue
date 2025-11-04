@@ -2,7 +2,7 @@
   <div class="admin-login-page">
     <div class="login-container">
       <div class="login-header">
-        <h1 class="logo">🍭 Sugar Rush</h1>
+        <h1 class="logo">🛍️ Magic Bag</h1>
         <h2 class="title">管理员登录</h2>
       </div>
 

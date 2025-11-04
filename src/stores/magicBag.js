@@ -81,11 +81,28 @@ export const useMagicBagStore = defineStore('magicBag', () => {
       } else {
         throw new Error(response.data?.message || 'Failed to create magic bag.');
       }
-    } catch (err) {
-      console.error('[MagicBagStore] Error creating magic bag:', err);
-      error.value = err.response?.data?.message || err.message || 'An unknown error occurred.';
-      return { success: false, message: error.value };
-    } finally {
+    } catch (err) {
+      console.error('[MagicBagStore] Error creating magic bag:', err);
+      console.error('[MagicBagStore] 错误详情:', {
+        message: err.message,
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        data: err.response?.data,
+        config: {
+          url: err.config?.url,
+          method: err.config?.method,
+          data: err.config?.data
+        }
+      });
+      
+      // 🔧 添加更详细的错误信息
+      if (err.response?.data) {
+        console.error('[MagicBagStore] 后端返回的完整错误:', JSON.stringify(err.response.data, null, 2));
+      }
+      
+      error.value = err.response?.data?.message || err.message || 'An unknown error occurred.';
+      return { success: false, message: error.value };
+    } finally {
        isLoading.value = false; 
     }
   };

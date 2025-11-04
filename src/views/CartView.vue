@@ -156,13 +156,13 @@
         <div class="payment-methods">
           <h3>Select Payment Method</h3>
           <div class="payment-options">
-            <label class="payment-option" :class="{ active: selectedPayment === 'mock' }">
-              <input type="radio" v-model="selectedPayment" value="mock" />
+            <label class="payment-option" :class="{ active: selectedPayment === 'stripe' }">
+              <input type="radio" v-model="selectedPayment" value="stripe" />
               <div class="payment-info">
-                <div class="payment-icon">🧪</div>
+                <div class="payment-icon">💳</div>
                 <div class="payment-details">
-                  <div class="payment-name">Mock Pay (For Testing)</div>
-                  <div class="payment-desc">Simulate payment for testing purposes</div>
+                  <div class="payment-name">Stripe</div>
+                  <div class="payment-desc">Secure payment via Stripe</div>
                 </div>
               </div>
             </label>
@@ -239,7 +239,7 @@ async function clearCart() {
 }
 
 const showPaymentModal = ref(false);
-const selectedPayment = ref('mock');
+const selectedPayment = ref('stripe');
 const isProcessing = ref(false);
 
 function checkout() {
@@ -266,30 +266,90 @@ async function processPayment() {
   isProcessing.value = true;
 
   try {
-    console.log("Simulating payment processing...");
-    await new Promise(resolve => setTimeout(resolve, 500));
-    console.log("Mock payment successful.");
+    // 🔧 第一步：创建订单
+    console.log("[CartView] 步骤1: 创建订单...");
+    const orderResponse = await api.post('/api/order/from-cart');
 
-    console.log("Attempting to create order from cart via API...");
-    const response = await api.post('/api/order/from-cart');
+    if (orderResponse.data?.code != 20000 || !orderResponse.data?.data) {
+      console.error("❌ Failed to create order:", orderResponse.data);
+      alert(`创建订单失败: ${orderResponse.data?.message || 'Unknown error from server'}`);
+      isProcessing.value = false;
+      return;
+    }
 
-    if (response.data?.code == 20000 && response.data?.data) {
-      const newOrder = response.data.data;
-      console.log("✅ Order created successfully via API:", newOrder);
+    const newOrder = orderResponse.data.data;
+    const orderId = newOrder.id || newOrder.orderId;
+    console.log("✅ Order created successfully:", newOrder);
+    console.log("订单ID:", orderId);
 
+    if (!orderId) {
+      console.error("❌ Order ID is missing:", newOrder);
+      alert('订单创建成功，但无法获取订单ID，请联系客服');
+      isProcessing.value = false;
+      return;
+    }
+
+    // 🔧 第二步：创建 Stripe Checkout Session
+    console.log("[CartView] 步骤2: 创建 Stripe Checkout Session...");
+    const paymentResponse = await api.post('/api/payment/checkout', null, {
+      params: { orderId: orderId }
+    });
+
+    console.log("[CartView] Payment checkout response:", paymentResponse.data);
+
+    // 🔧 检查响应格式：后端返回的是 PaymentResponseDto (success, checkoutUrl, message)
+    // 可能是直接返回，或者包装在标准响应格式中 (code, data, message)
+    let checkoutUrl = null;
+    let isSuccess = false;
+    
+    // 方式1: 直接检查 success 字段（PaymentResponseDto 格式）
+    if (paymentResponse.data?.success === true) {
+      isSuccess = true;
+      checkoutUrl = paymentResponse.data?.checkoutUrl;
+    }
+    // 方式2: 检查标准响应格式 (code === 20000 或 code === 1)
+    else if (paymentResponse.data?.code == 20000 || paymentResponse.data?.code == 1) {
+      isSuccess = true;
+      checkoutUrl = paymentResponse.data?.data?.checkoutUrl || paymentResponse.data?.checkoutUrl;
+    }
+    
+    if (isSuccess && checkoutUrl) {
+      console.log("✅ Stripe checkout session created, redirecting to:", checkoutUrl);
+      
+      // 🔧 在跳转到 Stripe 之前，将 token 保存到 sessionStorage
+      // 这样即使在 Stripe 重定向后，token 也能保留在同一个标签页中
+      const token = localStorage.getItem('token');
+      if (token) {
+        sessionStorage.setItem('payment_token', token);
+        console.log("[CartView] Token saved to sessionStorage for payment verification");
+      }
+      
+      // 清空购物车
       await cart.fetchCart();
+      // 关闭模态框
       closePaymentModal();
-      router.push('/order-history');
-
+      // 重定向到 Stripe Checkout
+      window.location.href = checkoutUrl;
     } else {
-      console.error("❌ Failed to create order via API:", response.data);
-      alert(`Failed to create order: ${response.data?.message || 'Unknown error from server'}`);
+      console.error("❌ Failed to create checkout session:", paymentResponse.data);
+      console.error("响应详情:", {
+        success: paymentResponse.data?.success,
+        code: paymentResponse.data?.code,
+        checkoutUrl: paymentResponse.data?.checkoutUrl || paymentResponse.data?.data?.checkoutUrl,
+        message: paymentResponse.data?.message
+      });
+      alert(`创建支付会话失败: ${paymentResponse.data?.message || 'Unknown error'}`);
+      isProcessing.value = false;
     }
 
   } catch (error) {
-    console.error('❌ Error during payment processing or order creation:', error);
-    alert(`An error occurred: ${error.response?.data?.message || error.message || 'Please try again.'}`);
-  } finally {
+    console.error('❌ Error during payment processing:', error);
+    console.error('错误详情:', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    alert(`支付处理失败: ${error.response?.data?.message || error.message || 'Please try again.'}`);
     isProcessing.value = false;
   }
 }

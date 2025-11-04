@@ -171,45 +171,89 @@ watch(() => props.bagToEdit, (newBag) => {
   }
 }, { immediate: true }); // Run immediately when component mounts or prop changes
 
-// Handle form submission
-const handleSubmit = async () => {
-  isSubmitting.value = true;
-  errorMessage.value = '';
+  // Handle form submission
+  const handleSubmit = async () => {
+    isSubmitting.value = true;
+    errorMessage.value = '';
 
-  // Prepare data for API (exclude ID for creation)
-  const dataToSend = { ...formData };
-  if (!isEditing.value) {
-    delete dataToSend.id; // Don't send id when creating
-    delete dataToSend.isActive; // isActive is usually set by default on creation
-  } else {
-    // For update, only send isActive if it exists in the form
-    if (formData.isActive === undefined) delete dataToSend.isActive;
-  }
-   // Ensure price is a number
-   if (dataToSend.price != null) dataToSend.price = parseFloat(dataToSend.price);
-   if (dataToSend.quantity != null) dataToSend.quantity = parseInt(dataToSend.quantity, 10);
-
-
-  try {
-    let result;
-    if (isEditing.value) {
-      result = await magicBagStore.updateMagicBag(formData.id, dataToSend);
+    // Prepare data for API (exclude ID for creation)
+    const dataToSend = { ...formData };
+    if (!isEditing.value) {
+      delete dataToSend.id; // Don't send id when creating
+      delete dataToSend.isActive; // isActive is usually set by default on creation
     } else {
-      result = await magicBagStore.createMagicBag(dataToSend);
+      // For update, only send isActive if it exists in the form
+      if (formData.isActive === undefined) delete dataToSend.isActive;
     }
-
-    if (result.success) {
-      emit('saved'); // Notify parent that save was successful
-      emit('close');  // Close the modal
+    
+    // 🔧 确保数据类型正确
+    // Ensure price is a number
+    if (dataToSend.price != null) dataToSend.price = parseFloat(dataToSend.price);
+    if (dataToSend.quantity != null) dataToSend.quantity = parseInt(dataToSend.quantity, 10);
+    
+    // 🔧 验证和格式化日期
+    // availableDate 应该是 YYYY-MM-DD 格式
+    if (dataToSend.availableDate) {
+      // 如果日期格式不正确，尝试修复
+      const dateStr = dataToSend.availableDate.trim();
+      // 检查是否是有效的日期格式 YYYY-MM-DD
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        errorMessage.value = '日期格式错误，请使用 YYYY-MM-DD 格式（如：2025-01-01）';
+        isSubmitting.value = false;
+        return;
+      }
+      // 验证年份是否合理（1000-9999）
+      const year = parseInt(dateStr.split('-')[0]);
+      if (year < 1000 || year > 9999) {
+        errorMessage.value = '年份必须在 1000-9999 之间';
+        isSubmitting.value = false;
+        return;
+      }
+      dataToSend.availableDate = dateStr; // 确保格式正确
     } else {
-      errorMessage.value = result.message || 'An error occurred.';
+      // 如果没有日期，设置为今天的日期
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      dataToSend.availableDate = `${year}-${month}-${day}`;
     }
-  } catch (error) {
-    errorMessage.value = error.message || 'An unexpected error occurred.';
-  } finally {
-    isSubmitting.value = false;
-  }
-};
+    
+    // 🔧 验证时间格式
+    // pickupStartTime 和 pickupEndTime 应该是 HH:MM 格式
+    if (dataToSend.pickupStartTime && !/^\d{2}:\d{2}$/.test(dataToSend.pickupStartTime)) {
+      errorMessage.value = '自提开始时间格式错误，请使用 HH:MM 格式（如：18:00）';
+      isSubmitting.value = false;
+      return;
+    }
+    if (dataToSend.pickupEndTime && !/^\d{2}:\d{2}$/.test(dataToSend.pickupEndTime)) {
+      errorMessage.value = '自提结束时间格式错误，请使用 HH:MM 格式（如：20:00）';
+      isSubmitting.value = false;
+      return;
+    }
+    
+    console.log('[MagicBagForm] 准备提交的数据:', JSON.stringify(dataToSend, null, 2));
+
+    try {
+      let result;
+      if (isEditing.value) {
+        result = await magicBagStore.updateMagicBag(formData.id, dataToSend);
+      } else {
+        result = await magicBagStore.createMagicBag(dataToSend);
+      }
+
+      if (result.success) {
+        emit('saved'); // Notify parent that save was successful
+        emit('close');  // Close the modal
+      } else {
+        errorMessage.value = result.message || 'An error occurred.';
+      }
+    } catch (error) {
+      errorMessage.value = error.message || 'An unexpected error occurred.';
+    } finally {
+      isSubmitting.value = false;
+    }
+  };
 
 // Reset form when modal is closed
 watch(() => props.show, (newValue) => {

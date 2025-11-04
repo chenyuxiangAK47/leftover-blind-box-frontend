@@ -13,7 +13,7 @@ export const useMerchantStore = defineStore('merchant', () => {
 
   // 🟢 [NEW] 商家注册
   /**
-   * 注册一个新商家 (使用 /api/merchants/register 或 /api/merchant/register 接口)
+   * 注册一个新商家 (使用 /api/merchant/register 接口)
    * 注意：需要先以 customer 身份登录，然后才能注册为 merchant
    */
   const registerMerchant = async (merchantData) => {
@@ -88,8 +88,8 @@ export const useMerchantStore = defineStore('merchant', () => {
       console.log('[MerchantStore] 请求数据的所有键:', Object.keys(requestData));
       
       // 🔧 第三步：发送请求
-      // 尝试多个可能的接口路径（单数和复数）
-      const possiblePaths = ['/api/merchants/register', '/api/merchant/register'];
+      // 根据后端 MerchantController，正确的路径是 /api/merchant/register（单数形式）
+      const possiblePaths = ['/api/merchant/register'];
       let response = null;
       let lastError = null;
       

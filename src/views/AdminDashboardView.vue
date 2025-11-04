@@ -3,7 +3,7 @@
     <!-- 顶部导航栏 -->
     <header class="admin-header">
       <div class="header-content">
-        <h1 class="logo">🍭 Sugar Rush</h1>
+        <h1 class="logo">🛍️ Magic Bag</h1>
         <div class="header-right">
           <span class="admin-badge">管理员</span>
           <span class="username">{{ username }}</span>
@@ -176,8 +176,18 @@
                 </div>
               </div>
 
+            <!-- 错误提示 -->
+            <div v-if="taskError" class="error-alert">
+              <div class="error-icon">⚠️</div>
+              <div class="error-content">
+                <h4 class="error-title">无法加载任务列表</h4>
+                <p class="error-message">{{ taskError }}</p>
+                <button class="btn btn-primary" @click="fetchTasks">重试</button>
+              </div>
+            </div>
+
             <!-- 空状态 -->
-            <div v-if="filteredTasks.length === 0" class="empty-state">
+            <div v-if="filteredTasks.length === 0 && !taskError" class="empty-state">
               <div class="empty-icon">📭</div>
               <p class="empty-text">暂无任务</p>
             </div>
@@ -420,6 +430,9 @@ const statsData = ref({
   totalRevenue: 0
 });
 
+// 错误状态
+const taskError = ref(null);
+
 // 过滤任务
 const filteredTasks = computed(() => {
   if (currentFilter.value === 'all') {
@@ -437,13 +450,12 @@ const handleLogout = async () => {
 // 获取任务列表
 const fetchTasks = async () => {
   try {
+    // 清除之前的错误状态
+    taskError.value = null;
+    
     console.log('[Admin] 开始获取任务列表...');
-    const response = await api.get('/api/admin/task', {
-      params: {
-        pageNum: 1,
-        pageSize: 100 // 获取所有任务
-      }
-    });
+    // 使用查询字符串方式传递参数
+    const response = await api.get('/api/admin/task?pageNum=1&pageSize=100');
     console.log('[Admin] Tasks response:', response);
     console.log('[Admin] Tasks response.data:', response.data);
     console.log('[Admin] Tasks response.data.data:', response.data?.data);
@@ -546,8 +558,24 @@ const fetchTasks = async () => {
       status: error.response?.status,
       statusText: error.response?.statusText,
       data: error.response?.data,
-      url: error.config?.url
+      url: error.config?.url,
+      params: error.config?.params
     });
+    // 打印完整的错误响应数据
+    if (error.response?.data) {
+      console.error('[Admin] 后端错误响应:', JSON.stringify(error.response.data, null, 2));
+    }
+    
+    // 检查是否是数据库错误（缺少 comment 列）
+    const errorMessage = error.response?.data?.message || error.message;
+    if (errorMessage && errorMessage.includes('Unknown column \'comment\'')) {
+      taskError.value = '数据库架构错误：admin_task 表缺少 comment 列。请联系后端开发人员修复数据库。';
+    } else if (error.response?.status === 400) {
+      taskError.value = `获取任务失败：${errorMessage || '未知错误'}`;
+    } else {
+      taskError.value = `获取任务失败：${errorMessage || '网络错误，请稍后重试'}`;
+    }
+    
     tasks.value = [];
     updateStats();
   }
@@ -623,9 +651,14 @@ const approveTask = async (taskId) => {
   if (!confirm('确定要批准这个商家注册申请吗？')) return;
   
   try {
+    // 批准任务（后端会自动更新merchant状态和用户角色）
     await api.post(`/api/admin/task/${taskId}/approve`);
+    console.log('[Admin] ✅ 任务已批准，后端会自动更新商家状态和用户角色');
+    
+    // 刷新任务列表
     await fetchTasks();
     alert('任务已批准！商家现在可以正常登录了。');
+    
     // 如果是从详情弹窗批准的，关闭弹窗
     if (showTaskDetailDialog.value) {
       showTaskDetailDialog.value = false;
@@ -683,32 +716,11 @@ const fetchMerchants = async () => {
   try {
     console.log('[Admin] 开始获取商家列表（从数据库）...');
     
-    // 尝试多个可能的接口路径
-    const possiblePaths = ['/api/merchant', '/api/merchants'];
-    let response = null;
-    let lastError = null;
-    
-    for (const path of possiblePaths) {
-      try {
-        console.log(`[Admin] 尝试请求URL: ${path}`);
-        response = await api.get(path);
-        console.log(`[Admin] ${path} 响应:`, response.data);
-        
-        // 如果成功，跳出循环
-        if (response.data?.code === 1 || response.data?.code === 20000) {
-          break;
-        }
-      } catch (error) {
-        console.warn(`[Admin] ${path} 请求失败:`, error.response?.status);
-        lastError = error;
-        continue;
-      }
-    }
-    
-    // 如果所有路径都失败
-    if (!response || !response.data) {
-      throw lastError || new Error('所有商家接口路径都失败');
-    }
+    // 根据后端 MerchantController，正确的路径是 /api/merchant（单数形式）
+    const path = '/api/merchant';
+    console.log(`[Admin] 请求URL: ${path}`);
+    const response = await api.get(path);
+    console.log(`[Admin] ${path} 响应:`, response.data);
     
     // 检查响应格式 - 支持code === 1 或 code === 20000
     if (response.data?.code === 1 || response.data?.code === 20000) {
@@ -740,13 +752,8 @@ const fetchMerchants = async () => {
         console.warn('[Admin] 商家列表数据格式异常，不是数组:', merchantsData);
         merchants.value = [];
       }
-    } else if (Array.isArray(response.data?.data)) {
-      merchants.value = response.data.data;
-    } else if (Array.isArray(response.data)) {
-      // 如果直接返回数组
-      merchants.value = response.data;
     } else {
-      console.warn('[Admin] 商家列表数据格式异常:', response.data);
+      console.warn('[Admin] 商家列表接口返回错误:', response.data);
       merchants.value = [];
     }
   } catch (error) {
@@ -1269,6 +1276,44 @@ onUnmounted(() => {
 .empty-text {
   color: #6b7280;
   font-size: 1.125rem;
+}
+
+/* 错误提示 */
+.error-alert {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  margin: 2rem 0;
+  display: flex;
+  gap: 1rem;
+}
+
+.error-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.error-content {
+  flex: 1;
+}
+
+.error-title {
+  color: #991b1b;
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.error-message {
+  color: #7f1d1d;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.error-content .btn {
+  margin-top: 0.5rem;
 }
 
 /* 弹窗 */

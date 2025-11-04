@@ -2,7 +2,7 @@
   <div class="admin-register-page">
     <div class="register-container">
       <div class="register-header">
-        <h1 class="logo">🍭 Sugar Rush</h1>
+        <h1 class="logo">🛍️ Magic Bag</h1>
         <h2 class="title">管理员注册</h2>
       </div>
 

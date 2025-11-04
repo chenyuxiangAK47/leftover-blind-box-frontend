@@ -235,19 +235,32 @@ const cancelOrder = async (orderId) => {
 const confirmPayment = async (orderId) => {
   try {
     // 调用 Stripe 支付接口
-    const response = await api.post('/payment/checkout', null, {
+    const response = await api.post('/api/payment/checkout', null, {
       params: { orderId }
     });
     
-    if (response.data?.success && response.data?.checkoutUrl) {
+    console.log('[OrderHistoryView] Payment checkout response:', response.data);
+    
+    // 检查响应格式（兼容 code === 20000 或 code === 1）
+    const successCode = response.data?.code == 20000 || response.data?.code == 1;
+    const checkoutUrl = response.data?.data?.checkoutUrl || response.data?.checkoutUrl;
+    
+    if (successCode && checkoutUrl) {
+      // 🔧 在跳转到 Stripe 之前，将 token 保存到 sessionStorage
+      const token = localStorage.getItem('token');
+      if (token) {
+        sessionStorage.setItem('payment_token', token);
+        console.log('[OrderHistoryView] Token saved to sessionStorage for payment verification');
+      }
+      
       // 跳转到 Stripe 支付页面
-      window.location.href = response.data.checkoutUrl;
+      window.location.href = checkoutUrl;
     } else {
-      alert(`Failed to create payment session: ${response.data?.message || 'Unknown error'}`);
+      alert(`创建支付会话失败: ${response.data?.message || 'Unknown error'}`);
     }
   } catch (error) {
     console.error('Payment error:', error);
-    alert(`Payment error: ${error.response?.data?.message || error.message}`);
+    alert(`支付错误: ${error.response?.data?.message || error.message}`);
   }
 };
 

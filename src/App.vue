@@ -1,8 +1,8 @@
 <template>
   <div id="app">
-    <!-- 商家导航栏 -->
+    <!-- Merchant Navigation Bar -->
     <nav v-if="user.role === 'merchant'" class="navbar">
-      <div class="logo">Sugar Rush</div>
+      <div class="logo">Magic Bag</div>
       <ul class="nav-links">
         <li><RouterLink to="/merchant/dashboard">Dashboard</RouterLink></li>
       </ul>
@@ -15,9 +15,9 @@
       </div>
     </nav>
 
-    <!-- 顾客/访客导航栏 -->
+    <!-- Customer/Guest Navigation Bar -->
     <nav v-else class="navbar">
-      <div class="logo">Sugar Rush</div>
+      <div class="logo">Magic Bag</div>
       <ul class="nav-links">
         <li><RouterLink to="/">Home</RouterLink></li>
         <li><a href="#">About Us</a></li>
@@ -76,22 +76,22 @@ const handleOpenLogin = () => {
   showLogin.value = true;
 };
 
-// 3. 定义事件处理函数
+  // 3. Define event handler function
 const handleMerchantLogin = () => {
-  console.log('[App.vue] 监听到商家登录成功事件，正在跳转...');
+  console.log('[App.vue] Merchant login success event detected, redirecting...');
   router.push('/merchant/dashboard');
 };
 
 onMounted(async () => {
   window.addEventListener('open-login', handleOpenLogin);
-  // 4. 在组件挂载时开始监听全局事件
+  // 4. Listen to global events when component mounts
   window.addEventListener('merchant-login-success', handleMerchantLogin);
   await user.initialize();
 });
 
 onUnmounted(() => {
   window.removeEventListener('open-login', handleOpenLogin);
-  // 5. 在组件卸载时移除监听，防止内存泄漏
+  // 5. Remove listener when component unmounts to prevent memory leaks
   window.removeEventListener('merchant-login-success', handleMerchantLogin);
 });
 </script>
