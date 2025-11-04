@@ -61,16 +61,25 @@ const onSubmit = async () => {
   if (res.success) {
     successMsg.value = '✅ Login Successful! Redirecting...';
     
+    // 等待用户信息初始化完成
+    await userStore.initialize();
+    
     setTimeout(() => {
       emit('close');
       // 根据角色跳转到不同界面
-      if (userStore.role === 'merchant') {
+      const role = userStore.role?.toLowerCase();
+      console.log('[LoginModal] Current role:', role);
+      
+      if (role === 'merchant') {
         router.push('/merchant/dashboard');
-      } else if (userStore.role === 'admin') {
+      } else if (role === 'admin') {
+        console.log('[LoginModal] Redirecting to /admin');
         router.push('/admin');
+      } else {
+        // customer 和其他角色留在当前页面
+        console.log('[LoginModal] Customer role, staying on current page');
       }
-      // customer 和其他角色留在当前页面
-    }, 1000);
+    }, 500);
   } else {
     errorMsg.value = res.message || 'Login failed';
   }

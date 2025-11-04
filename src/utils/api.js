@@ -11,8 +11,20 @@ const api = axios.create({
 // 这个拦截器会在每次发送请求前，自动将 localStorage 中存储的 token 添加到请求头中
 api.interceptors.request.use(
   config => {
+    // 定义不需要认证的接口路径（注册、登录等公开接口）
+    const publicPaths = [
+      '/api/auth/login',
+      '/api/auth/register',
+      '/api/user/register', // 用户注册（customer/merchant/admin）
+      '/api/auth/key',
+      '/api/auth/activate'
+    ];
+    
+    // 如果是公开接口，不添加 Authorization 头
+    const isPublicPath = publicPaths.some(path => config.url?.includes(path));
+    
     const token = localStorage.getItem('token');
-    if (token) {
+    if (token && !isPublicPath) {
       // 后端通过这个请求头来验证你的登录状态
       config.headers.Authorization = `Bearer ${token}`;
     }

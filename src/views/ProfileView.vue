@@ -129,6 +129,19 @@
               </button>
             </div>
             
+            <!-- Upgrade to Merchant Button (only for customers) -->
+            <div v-if="userStore.role === 'customer'" class="flex justify-center mt-6">
+              <RouterLink 
+                to="/merchant/upgrade"
+                class="px-12 py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-2xl font-bold text-lg hover:from-green-700 hover:to-emerald-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+              >
+                <span class="flex items-center gap-2">
+                  <span class="text-xl">🏪</span>
+                  升级为商家
+                </span>
+              </RouterLink>
+            </div>
+            
             <!-- Feedback Messages -->
             <div v-if="successMessage" class="mt-6 p-4 bg-green-100 border border-green-300 rounded-2xl text-green-800 text-center font-medium">
               <span class="text-xl mr-2">✅</span>
@@ -147,6 +160,8 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { RouterLink } from 'vue-router';
 import { useUserStore } from '@/stores/user';
 import { storeToRefs } from 'pinia';
 

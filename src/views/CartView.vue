@@ -16,10 +16,9 @@
     <div class="container">
       <!-- 加载状态 -->
       <div v-if="cart.isLoading && (!cart.items || cart.items.length === 0)" class="loading-state">
-          <div class="spinner"></div>
-          <p>Loading your cart...</p>
+        <div class="spinner"></div>
+        <p>Loading your cart...</p>
       </div>
-
 
       <!-- 空购物车状态 -->
       <div v-else-if="!cart.items || cart.items.length === 0" class="empty-cart">
@@ -32,10 +31,8 @@
       </div>
 
       <!-- 购物车商品列表 -->
-      <!-- 使用 lastUpdated 作为 key 来强制刷新 -->
-      <div v-else class="cart-content" :key="cart.lastUpdated">
+      <div v-else class="cart-content">
         <div class="cart-items">
-          <!-- 使用 item.magicbagId 作为 key，更稳定 -->
           <div
             v-for="(item, index) in cart.items"
             :key="item.magicbagId || index"
@@ -50,15 +47,13 @@
 
             <!-- 商品信息 -->
             <div class="item-info">
-              <!-- 使用 bagName -->
               <h3 class="item-title">{{ item.bagName }}</h3>
               <p class="item-price">${{ (item.price || 0).toFixed(2) }}</p>
               <p v-if="item.magicbagId" class="item-merchant">
                 MagicBag ID: {{ item.magicbagId }}
               </p>
-              <!-- 显示 invalid 警告 -->
               <p v-if="!item.magicbagId" class="item-invalid-warning">
-                ⚠️ Item data is invalid.
+                ⚠️ Item data is invalid (Missing ID).
               </p>
             </div>
 
@@ -82,7 +77,6 @@
                 </button>
               </div>
 
-              <!-- 删除按钮 -->
               <button
                 class="remove-btn"
                 @click="removeItem(item.magicbagId)"
@@ -95,7 +89,6 @@
 
             <!-- 小计 -->
             <div class="item-subtotal">
-              <!-- 使用 subtotal -->
               ${{ (item.subtotal || 0).toFixed(2) }}
             </div>
           </div>
@@ -107,7 +100,6 @@
             <h3>Order Summary</h3>
 
             <div class="summary-row">
-              <!-- 使用 items.length -->
               <span>Subtotal ({{ cart.items.length }} items):</span>
               <span>${{ (cart.total || 0).toFixed(2) }}</span>
             </div>
@@ -136,7 +128,7 @@
     </div>
   </div>
 
-  <!-- 支付模态框 (保持不变) -->
+  <!-- 支付模态框 -->
   <div v-if="showPaymentModal" class="payment-modal-overlay" @click.self="closePaymentModal">
     <div class="payment-modal">
       <div class="payment-header">
@@ -149,12 +141,9 @@
         <div class="order-summary">
           <h3>Order Summary</h3>
           <div class="summary-items">
-            <!-- 使用 item.magicbagId 作为 key -->
             <div v-for="item in cart.items" :key="item.magicbagId" class="summary-item">
-              <!-- 使用 bagName -->
               <span class="item-name">{{ item.bagName }}</span>
               <span class="item-qty">×{{ item.quantity }}</span>
-              <!-- 使用 subtotal -->
               <span class="item-price">${{ (item.subtotal || 0).toFixed(2) }}</span>
             </div>
           </div>
@@ -167,13 +156,13 @@
         <div class="payment-methods">
           <h3>Select Payment Method</h3>
           <div class="payment-options">
-            <label class="payment-option" :class="{ active: selectedPayment === 'stripe' }">
-              <input type="radio" v-model="selectedPayment" value="stripe" />
+            <label class="payment-option" :class="{ active: selectedPayment === 'mock' }">
+              <input type="radio" v-model="selectedPayment" value="mock" />
               <div class="payment-info">
-                <div class="payment-icon">💳</div>
+                <div class="payment-icon">🧪</div>
                 <div class="payment-details">
-                  <div class="payment-name">Stripe Payment</div>
-                  <div class="payment-desc">Secure payment powered by Stripe</div>
+                  <div class="payment-name">Mock Pay (For Testing)</div>
+                  <div class="payment-desc">Simulate payment for testing purposes</div>
                 </div>
               </div>
             </label>
@@ -200,128 +189,105 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, nextTick } from 'vue' // 导入 watch 和 nextTick
-import { useRouter } from 'vue-router'
-import { useCartStore } from '@/stores/cart'
-import { useUserStore } from '@/stores/user'
-import { api } from '@/utils/api' // 确保导入 api
+import { ref, onMounted, watch, nextTick } from 'vue';
+import { useRouter, RouterLink } from 'vue-router';
+import { useCartStore } from '@/stores/cart';
+import { useUserStore } from '@/stores/user';
+import { api } from '@/utils/api';
 
-const cart = useCartStore()
-const user = useUserStore()
-const router = useRouter()
+const cart = useCartStore();
+const user = useUserStore();
+const router = useRouter();
 
-// Debug: 添加 Watcher 监听 cart.items 的变化，并在 nextTick 中读取
+// Debug Watcher
 watch(() => cart.items, (newItems) => {
   console.log('[CartView Debug] cart.items changed!');
-  // 使用 nextTick 确保在 DOM 更新后读取状态
   nextTick(() => {
     console.log('[CartView Debug] Reading items in nextTick:', JSON.parse(JSON.stringify(cart.items)));
-    // 检查新数组中每个 item 是否包含 magicbagId
     if (Array.isArray(cart.items)) {
       cart.items.forEach((item, index) => {
-        console.log(`[CartView Debug] Item ${index} (in nextTick):`, JSON.parse(JSON.stringify(item)), 'Has magicbagId:', item && item.hasOwnProperty('magicbagId'), 'Value:', item ? item.magicbagId : 'item is null/undefined');
+        console.log(`[CartView Debug] Item ${index} (in nextTick):`, JSON.parse(JSON.stringify(item)), 'Has magicbagId (b):', item && item.hasOwnProperty('magicbagId'), 'Value (b):', item ? item.magicbagId : 'item is null/undefined');
       });
     }
   });
-}, { deep: true, immediate: true }); // 使用 immediate: true 确保初始加载也触发
+}, { deep: true, immediate: true });
 
-
-// 页面加载时自动获取购物车
 onMounted(() => {
   if (user.isLoggedIn) {
-    cart.fetchCart()
+    cart.fetchCart();
   }
-})
+});
 
-// 更新商品数量
 async function updateQuantity(magicbagId, newQty) {
   if (!magicbagId) {
     console.error("updateQuantity called with invalid magicbagId:", magicbagId);
     return;
   }
-  // 调用 store 中的异步 action
   await cart.updateItemQuantity(magicbagId, newQty);
 }
 
-// 删除商品 (移除 confirm)
 async function removeItem(magicbagId) {
   if (!magicbagId) {
     console.error("removeItem called with invalid magicbagId:", magicbagId);
     return;
   }
-  // 调用 store 中的异步 action
   await cart.removeItemFromCart(magicbagId);
 }
 
-// 清空购物车 (移除 confirm)
 async function clearCart() {
-  // 调用 store 中的异步 action
   await cart.clearServerCart();
 }
 
-// --- 结算与支付 ---
-
-const showPaymentModal = ref(false)
-const selectedPayment = ref('stripe') // 默认选中 Stripe 支付
-const isProcessing = ref(false)
+const showPaymentModal = ref(false);
+const selectedPayment = ref('mock');
+const isProcessing = ref(false);
 
 function checkout() {
   if (!user.isLoggedIn) {
-    // 如果用户未登录，触发全局事件打开登录弹窗
     window.dispatchEvent(new Event('open-login'));
     return;
   }
-  if (!cart.items || cart.items.length === 0) { // 检查 items 是否存在且不为空
+  if (!cart.items || cart.items.length === 0) {
     console.warn('Cart is empty, cannot proceed to checkout.');
-    alert('Your cart is empty!'); // 添加用户提示
+    alert('Your cart is empty!');
     return;
   }
   showPaymentModal.value = true;
 }
 
-
 function closePaymentModal() {
-  showPaymentModal.value = false
-  isProcessing.value = false
+  showPaymentModal.value = false;
+  isProcessing.value = false;
 }
 
-// 处理支付并创建订单
 async function processPayment() {
   if (!selectedPayment.value) return;
 
   isProcessing.value = true;
 
   try {
-    // 1. 先创建订单
-    console.log("Creating order from cart...");
-    const orderResponse = await api.post('/api/orders/from-cart');
-    
-    if (orderResponse.data?.code !== 20000 || !orderResponse.data?.data) {
-      console.error("❌ Failed to create order:", orderResponse.data);
-      alert(`Failed to create order: ${orderResponse.data?.message || 'Unknown error'}`);
-      return;
-    }
+    console.log("Simulating payment processing...");
+    await new Promise(resolve => setTimeout(resolve, 500));
+    console.log("Mock payment successful.");
 
-    const newOrder = orderResponse.data.data;
-    console.log("✅ Order created successfully:", newOrder);
+    console.log("Attempting to create order from cart via API...");
+    const response = await api.post('/api/order/from-cart');
 
-    // 2. 调用 Stripe 支付接口
-    console.log("Creating Stripe checkout session...");
-    const paymentResponse = await api.post('/api/payment/checkout', null, {
-      params: { orderId: newOrder.id }
-    });
+    if (response.data?.code == 20000 && response.data?.data) {
+      const newOrder = response.data.data;
+      console.log("✅ Order created successfully via API:", newOrder);
 
-    if (paymentResponse.data?.success && paymentResponse.data?.checkoutUrl) {
-      // 3. 跳转到 Stripe 支付页面
-      console.log("Redirecting to Stripe checkout...");
-      window.location.href = paymentResponse.data.checkoutUrl;
+      await cart.fetchCart();
+      closePaymentModal();
+      router.push('/order-history');
+
     } else {
-      console.error("❌ Failed to create payment session:", paymentResponse.data);
-      alert(`Failed to create payment session: ${paymentResponse.data?.message || 'Unknown error'}`);
+      console.error("❌ Failed to create order via API:", response.data);
+      alert(`Failed to create order: ${response.data?.message || 'Unknown error from server'}`);
     }
 
   } catch (error) {
-    console.error('❌ Error during payment processing:', error);
+    console.error('❌ Error during payment processing or order creation:', error);
     alert(`An error occurred: ${error.response?.data?.message || error.message || 'Please try again.'}`);
   } finally {
     isProcessing.value = false;
@@ -330,35 +296,39 @@ async function processPayment() {
 </script>
 
 <style scoped>
-/* --- 省略样式 --- */
 .loading-state {
   text-align: center;
   padding: 80px 20px;
   background: white;
   border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
+
 .spinner {
-  border: 4px solid rgba(0,0,0,0.1);
+  border: 4px solid rgba(0, 0, 0, 0.1);
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border-left-color: #09f; /* 或其他主题色 */
+  border-left-color: #09f;
   animation: spin 1s ease infinite;
   margin: 0 auto 20px;
 }
+
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
-.item-invalid-warning { /* Renamed from item-error-notice for clarity */
+.item-invalid-warning {
   color: #e74c3c;
-  font-size: 0.9em; /* Slightly larger */
+  font-size: 0.9em;
   margin-top: 4px;
   font-weight: 500;
 }
-
 
 .cart-page {
   min-height: 100vh;
@@ -395,7 +365,7 @@ async function processPayment() {
   padding: 80px 20px;
   background: white;
   border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 
 .empty-icon {
@@ -436,12 +406,12 @@ async function processPayment() {
   padding: 20px;
   background: white;
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   transition: box-shadow 0.2s;
 }
 
 .cart-item:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .item-image {
@@ -452,7 +422,7 @@ async function processPayment() {
 .image-placeholder {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #ff9a9e, #fecfef); /* 示例渐变 */
+  background: linear-gradient(135deg, #ff9a9e, #fecfef);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -461,7 +431,7 @@ async function processPayment() {
 }
 
 .item-info {
-  min-width: 0; /* Prevents overflow */
+  min-width: 0;
 }
 
 .item-title {
@@ -469,16 +439,12 @@ async function processPayment() {
   font-size: 18px;
   font-weight: 600;
   color: #333;
-  /* Optional: prevent long titles from breaking layout */
-  /* white-space: nowrap; */
-  /* overflow: hidden; */
-  /* text-overflow: ellipsis; */
 }
 
 .item-price {
   margin: 0 0 4px 0;
   font-size: 16px;
-  color: #e74c3c; /* Red color for price */
+  color: #e74c3c;
   font-weight: 600;
 }
 
@@ -487,7 +453,6 @@ async function processPayment() {
   font-size: 14px;
   color: #666;
 }
-
 
 .item-controls {
   display: flex;
@@ -517,7 +482,7 @@ async function processPayment() {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   transition: all 0.2s;
 }
 
@@ -541,7 +506,7 @@ async function processPayment() {
 .remove-btn {
   padding: 8px 16px;
   border: none;
-  background: #ff6b6b; /* Softer red */
+  background: #ff6b6b;
   color: white;
   border-radius: 6px;
   cursor: pointer;
@@ -554,12 +519,12 @@ async function processPayment() {
   background: #ff5252;
   transform: scale(1.02);
 }
+
 .remove-btn:disabled {
-  background: #f8d7da; /* Slightly lighter red when disabled */
+  background: #f8d7da;
   cursor: not-allowed;
   opacity: 0.7;
 }
-
 
 .item-subtotal {
   font-weight: bold;
@@ -571,14 +536,14 @@ async function processPayment() {
 
 .cart-summary-section {
   position: sticky;
-  top: 20px; /* Adjust as needed for header height */
+  top: 20px;
 }
 
 .summary-card {
   background: white;
   padding: 24px;
   border-radius: 12px;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
 }
 
 .summary-card h3 {
@@ -597,7 +562,7 @@ async function processPayment() {
 .total-row {
   font-size: 18px;
   font-weight: bold;
-  color: #e74c3c; /* Match item price color */
+  color: #e74c3c;
   border-top: 1px solid #eee;
   padding-top: 12px;
   margin-top: 12px;
@@ -610,7 +575,8 @@ async function processPayment() {
   margin-top: 24px;
 }
 
-.btn-primary, .btn-secondary {
+.btn-primary,
+.btn-secondary {
   padding: 14px 24px;
   border: none;
   border-radius: 8px;
@@ -620,72 +586,67 @@ async function processPayment() {
   transition: all 0.2s;
   text-decoration: none;
   text-align: center;
-  display: inline-block; /* Or block if they should take full width */
+  display: inline-block;
 }
 
 .btn-primary {
-  background: #22c55e; /* Green */
+  background: #22c55e;
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #16a34a; /* Darker green */
+  background: #16a34a;
   transform: translateY(-1px);
 }
+
 .btn-primary:disabled {
-    background-color: #a7f3d0; /* Lighter green */
-    cursor: not-allowed;
-    opacity: 0.7;
+  background-color: #a7f3d0;
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .btn-secondary {
-  background: #6b7280; /* Gray */
+  background: #6b7280;
   color: white;
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #4b5563; /* Darker gray */
+  background: #4b5563;
   transform: translateY(-1px);
 }
+
 .btn-secondary:disabled {
-    background-color: #d1d5db; /* Lighter gray */
-    cursor: not-allowed;
-    opacity: 0.7;
+  background-color: #d1d5db;
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
-/* Responsive Design */
 @media (max-width: 768px) {
   .cart-content {
     grid-template-columns: 1fr;
     gap: 20px;
   }
-
   .cart-item {
-    grid-template-columns: 80px 1fr; /* Image, Info */
+    grid-template-columns: 80px 1fr;
     gap: 16px;
   }
-
-  /* Make controls and subtotal span full width below info */
   .item-controls {
-    grid-column: 1 / -1; /* Span all columns */
+    grid-column: 1 / -1;
     flex-direction: row;
     justify-content: space-between;
     margin-top: 12px;
   }
-
   .item-subtotal {
-    grid-column: 1 / -1; /* Span all columns */
+    grid-column: 1 / -1;
     text-align: left;
     margin-top: 12px;
-    font-size: 16px; /* Slightly smaller on mobile */
+    font-size: 16px;
   }
-
   .checkout-actions {
     flex-direction: column;
   }
 }
 
-/* Payment Modal Styles */
 .payment-modal-overlay {
   position: fixed;
   top: 0;
@@ -715,9 +676,8 @@ async function processPayment() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 24px 24px 16px; /* Adjusted padding */
+  padding: 24px 24px 16px;
   border-bottom: 1px solid #eee;
-  /* margin-bottom: 24px; Removed margin, use padding on content */
 }
 
 .payment-header h2 {
@@ -733,8 +693,8 @@ async function processPayment() {
   cursor: pointer;
   color: #666;
   padding: 0;
-  width: 32px; /* Fixed size */
-  height: 32px; /* Fixed size */
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -748,7 +708,7 @@ async function processPayment() {
 }
 
 .payment-content {
-  padding: 24px; /* Added padding */
+  padding: 24px;
 }
 
 .order-summary {
@@ -762,7 +722,7 @@ async function processPayment() {
 }
 
 .summary-items {
-  background: #f8f9fa; /* Light gray background */
+  background: #f8f9fa;
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 12px;
@@ -781,9 +741,9 @@ async function processPayment() {
 }
 
 .item-name {
-  flex: 1; /* Allow name to take up space */
+  flex: 1;
   font-weight: 500;
-  padding-right: 8px; /* Add space before qty */
+  padding-right: 8px;
 }
 
 .item-qty {
@@ -793,14 +753,14 @@ async function processPayment() {
 
 .item-price {
   font-weight: 600;
-  color: #e74c3c; /* Red price */
+  color: #e74c3c;
 }
 
 .summary-total {
   text-align: right;
   font-size: 20px;
   font-weight: bold;
-  color: #e74c3c; /* Red total price */
+  color: #e74c3c;
 }
 
 .payment-methods h3 {
@@ -827,18 +787,18 @@ async function processPayment() {
 }
 
 .payment-option:hover {
-  border-color: #007bff; /* Blue border on hover */
-  background: #f8f9ff; /* Light blue background */
+  border-color: #007bff;
+  background: #f8f9ff;
 }
 
 .payment-option.active {
-  border-color: #007bff; /* Blue border when active */
-  background: #e3f2fd; /* Lighter blue background when active */
+  border-color: #007bff;
+  background: #e3f2fd;
 }
 
 .payment-option input[type="radio"] {
   margin-right: 16px;
-  transform: scale(1.2); /* Make radio button slightly larger */
+  transform: scale(1.2);
 }
 
 .payment-info {
@@ -850,7 +810,7 @@ async function processPayment() {
 .payment-icon {
   font-size: 24px;
   margin-right: 12px;
-  width: 40px; /* Fixed width */
+  width: 40px;
   text-align: center;
 }
 
@@ -875,11 +835,12 @@ async function processPayment() {
   gap: 12px;
   padding: 24px;
   border-top: 1px solid #eee;
-  margin-top: 24px; /* Ensure space above actions */
+  margin-top: 24px;
 }
 
-.btn-cancel, .btn-pay {
-  flex: 1; /* Make buttons take equal space */
+.btn-cancel,
+.btn-pay {
+  flex: 1;
   padding: 14px 24px;
   border: none;
   border-radius: 8px;
@@ -890,31 +851,36 @@ async function processPayment() {
 }
 
 .btn-cancel {
-  background: #6c757d; /* Gray */
+  background: #6c757d;
   color: white;
 }
 
 .btn-cancel:hover:not(:disabled) {
-  background: #5a6268; /* Darker gray */
+  background: #5a6268;
 }
 
 .btn-pay {
-  background: #28a745; /* Green */
+  background: #28a745;
   color: white;
 }
 
 .btn-pay:hover:not(:disabled) {
-  background: #218838; /* Darker green */
+  background: #218838;
 }
 
-.btn-cancel:disabled, .btn-pay:disabled {
+.btn-cancel:disabled,
+.btn-pay:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
@@ -928,28 +894,24 @@ async function processPayment() {
   }
 }
 
-/* Responsive Design for Modal */
 @media (max-width: 768px) {
   .payment-modal {
     width: 95%;
-    margin: 20px; /* Add margin */
+    margin: 20px;
   }
-
   .payment-header {
-    padding: 20px 20px 12px; /* Adjust padding */
+    padding: 20px 20px 12px;
   }
-
   .payment-content {
-    padding: 20px; /* Adjust padding */
+    padding: 20px;
   }
-
   .payment-actions {
-    padding: 20px; /* Adjust padding */
-    flex-direction: column; /* Stack buttons */
+    padding: 20px;
+    flex-direction: column;
   }
-
-  .btn-cancel, .btn-pay {
-    width: 100%; /* Make buttons full width */
+  .btn-cancel,
+  .btn-pay {
+    width: 100%;
   }
 }
 </style>

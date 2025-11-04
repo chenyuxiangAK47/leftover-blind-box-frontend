@@ -9,7 +9,7 @@ function decodeJwt(token) {
     if (!base64Url) return null; // Invalid token format
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
     const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
     }).join(''));
     return JSON.parse(jsonPayload);
   } catch (error) {
@@ -18,44 +18,133 @@ function decodeJwt(token) {
   }
 }
 
+// --- 辅助函数：从解码后的 Token 中提取角色 (带超详细日志) ---
+function extractRoleFromToken(decodedToken) {
+  console.log("-------------------- EXTRACT ROLE START --------------------");
+  if (!decodedToken) {
+    console.log("[UserStore JWT Decode] Decoded token is null, returning 'customer'.");
+    console.log("-------------------- EXTRACT ROLE END ----------------------");
+    return 'customer'; // 默认角色
+  }
+
+  console.log("[UserStore JWT Decode] Attempting to extract role from:", JSON.stringify(decodedToken));
+
+  const rolesClaim = decodedToken.roles || decodedToken.authorities || decodedToken.role;
+  let finalRole = 'customer'; // 默认值
+
+  console.log("[UserStore JWT Decode] Raw rolesClaim:", rolesClaim, "(type:", typeof rolesClaim + ")");
+
+  if (typeof rolesClaim === 'string') {
+    const singleRole = rolesClaim.trim();
+    console.log("[UserStore JWT Decode] rolesClaim is single string:", `'${singleRole}'`);
+    const normalizedRole = singleRole.startsWith('ROLE_') ? singleRole.substring(5).toLowerCase() : singleRole.toLowerCase();
+    console.log("[UserStore JWT Decode] Normalized single role:", `'${normalizedRole}'`);
+
+    console.log(`[UserStore JWT Decode] Comparing normalizedRole ('${normalizedRole}') with 'merchant'...`);
+    if (normalizedRole === 'merchant') {
+      console.log("[UserStore JWT Decode] EXACT MATCH found: 'merchant'. Setting finalRole to 'merchant'.");
+      finalRole = 'merchant';
+    } else if (normalizedRole === 'admin' || normalizedRole === 'super_admin') {
+      console.log(`[UserStore JWT Decode] Comparing normalizedRole ('${normalizedRole}') with 'admin' or 'super_admin'...`);
+      console.log("[UserStore JWT Decode] EXACT MATCH found: 'admin'/'super_admin'. Setting finalRole to 'admin'.");
+      finalRole = 'admin';
+    } else if (normalizedRole === 'customer' || normalizedRole === 'user') {
+      console.log(`[UserStore JWT Decode] Comparing normalizedRole ('${normalizedRole}') with 'customer' or 'user'...`);
+      console.log("[UserStore JWT Decode] EXACT MATCH found: 'customer'/'user'. Setting finalRole to 'customer'.");
+      finalRole = 'customer';
+    } else {
+      console.log("[UserStore JWT Decode] Single role string did not match known roles. Keeping default 'customer'.");
+    }
+  }
+  else if (Array.isArray(rolesClaim)) {
+    const rolesArray = rolesClaim.map(r => String(r).trim());
+    console.log("[UserStore JWT Decode] rolesClaim is array, rolesArray:", rolesArray);
+    const normalizedRoles = rolesArray.map(r => r.startsWith('ROLE_') ? r.substring(5).toLowerCase() : r.toLowerCase());
+    console.log("[UserStore JWT Decode] Normalized roles for checking:", normalizedRoles);
+
+    if (normalizedRoles.includes('merchant')) {
+      console.log("[UserStore JWT Decode] Checking if normalizedRoles includes 'merchant'...");
+      console.log("[UserStore JWT Decode] INCLUDES 'merchant'. Setting finalRole to 'merchant'.");
+      finalRole = 'merchant';
+    } else if (normalizedRoles.includes('admin') || normalizedRoles.includes('super_admin')) {
+      console.log("[UserStore JWT Decode] Checking if normalizedRoles includes 'admin' or 'super_admin'...");
+      console.log("[UserStore JWT Decode] INCLUDES 'admin'/'super_admin'. Setting finalRole to 'admin'.");
+      finalRole = 'admin';
+    } else if (normalizedRoles.includes('customer') || normalizedRoles.includes('user')) {
+      console.log("[UserStore JWT Decode] Checking if normalizedRoles includes 'customer' or 'user'...");
+      console.log("[UserStore JWT Decode] INCLUDES 'customer'/'user'. Setting finalRole to 'customer'.");
+      finalRole = 'customer';
+    } else {
+      console.log("[UserStore JWT Decode] No specific role matched in normalizedRoles array. Keeping default 'customer'.");
+    }
+  }
+  else {
+    console.log("[UserStore JWT Decode] No standard role claim found or invalid format. Keeping default 'customer'.");
+  }
+
+  console.log("[UserStore JWT Decode] Final determined role:", `'${finalRole}'`);
+  console.log("-------------------- EXTRACT ROLE END ----------------------");
+  return finalRole;
+}
+
 export const useUserStore = defineStore('user', () => {
   // --- 状态 ---
   const token = ref(localStorage.getItem('token') || '');
   const username = ref(localStorage.getItem('username') || '');
-  const role = ref(localStorage.getItem('role') || 'customer'); 
-  const userProfile = ref(null); 
+  const role = ref(localStorage.getItem('role') || 'customer');
+  const userProfile = ref(null);
   const isLoggedIn = ref(!!token.value);
-  const isInitialized = ref(false); 
-  const showLoginModal = ref(false); 
+  const isInitialized = ref(false);
+  const showLoginModal = ref(false);
+  const userLocation = ref(null);
 
   // --- Actions ---
 
+  const getUserLocation = () => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        console.error("[UserStore] Geolocation is not supported by this browser.");
+        userLocation.value = null;
+        reject("Geolocation not supported");
+        return;
+      }
+
+      console.log("[UserStore] Requesting user location (this may trigger a browser popup)...");
+      
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const location = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          };
+          userLocation.value = location;
+          console.log("[UserStore] User location fetched successfully:", location);
+          resolve(location);
+        },
+        (error) => {
+          console.error("[UserStore] Error getting user location:", error.message);
+          userLocation.value = null;
+          reject(error.message);
+        }
+      );
+    });
+  };
+
   const fetchUserProfile = async () => {
     if (!token.value) {
-        console.warn("[UserStore] No token found, cannot fetch user profile.");
-        // If initialize calls this without token, ensure logged out state
-        if (isLoggedIn.value) await logout(false); 
-        return null; 
+      console.warn("[UserStore] No token found, cannot fetch user profile.");
+      if (isLoggedIn.value) await logout(false);
+      return null;
     }
     console.log("[UserStore] Attempting to fetch user profile...");
     try {
-      // 🟢 使用 profile/{username} 接口获取用户信息
-      const currentUsername = username.value || localStorage.getItem('username');
-      if (!currentUsername) {
-        console.warn("[UserStore] No username available to fetch profile");
-        return null;
-      }
+      const response = await api.get('/api/user');
+      console.log("[UserStore] /api/user Response:", response.data);
+      const profile = response.data?.data;
       
-      const response = await api.get(`/api/user/profile/${currentUsername}`); 
-      console.log("[UserStore] /api/user/profile Response:", response.data); // Log the full response
-      console.log("[UserStore] Response.data.data:", response.data?.data); // Log the actual data object
-      console.log("[UserStore] Response.data.data keys:", response.data?.data ? Object.keys(response.data.data) : 'null');
-      const profile = response.data?.data; 
-      
-      if (profile && profile.username) {
-        // 后端返回了数据，即使id为null也要使用
+      if (profile) {
         userProfile.value = profile;
-        console.log("[UserStore] User profile fetched:", JSON.stringify(profile)); 
+        console.log("[UserStore] User profile fetched:", JSON.stringify(profile));
 
         if (profile.username) {
           username.value = profile.username;
@@ -69,50 +158,23 @@ export const useUserStore = defineStore('user', () => {
             console.log("[UserStore] Updated role from profile:", lowerCaseRole);
           }
         }
-        
-        // 如果后端返回的id为null，使用一个已知存在的用户ID
-        if (!profile.id) {
-          console.warn("[UserStore] Backend returned null id, using fallback ID 15");
-          userProfile.value.id = 15; // 使用已知存在的用户ID
-        }
-        
-        isLoggedIn.value = true; 
-        return userProfile.value; 
+        isLoggedIn.value = true;
+        return profile;
       } else {
-         console.warn("[UserStore] Backend /api/user/profile returned null or invalid data, using JWT fallback.");
-         // 后端返回null，使用JWT信息创建临时profile
-         const currentUsername = username.value || localStorage.getItem('username');
-         if (currentUsername) {
-           // 使用已知存在的用户ID（从之前的日志看到用户ID 15存在）
-           const tempProfile = {
-             id: 15, // 使用已知存在的用户ID
-             username: currentUsername,
-             role: role.value.toUpperCase(),
-             phone: null,
-             nickname: null,
-             avatar: null
-           };
-           userProfile.value = tempProfile;
-           isLoggedIn.value = true;
-           console.log("[UserStore] Created temporary profile from JWT:", tempProfile);
-           return tempProfile;
-         }
-         return null;
+        console.warn("[UserStore] Backend /api/user returned null data.");
+        return null;
       }
-
     } catch (error) {
       console.error("[UserStore] 获取用户资料失败:", error.response?.data || error.message);
-      // 发生错误也返回 null
-      return null; 
+      return null;
     }
   };
   
   const updateUserProfile = async (profileData) => {
-    // ... (保持不变) ...
     if (!isLoggedIn.value) return { success: false, message: "Not logged in." };
     try {
       await api.put('/api/user/profile', profileData);
-      await fetchUserProfile(); 
+      await fetchUserProfile();
       return { success: true };
     } catch (error) {
       console.error("[UserStore] 更新用户资料失败:", error);
@@ -121,23 +183,19 @@ export const useUserStore = defineStore('user', () => {
     }
   };
 
-  const logout = async (shouldRedirect = true) => { 
+  const logout = async (shouldRedirect = true) => {
     console.log("[UserStore] Logging out...");
     token.value = '';
     username.value = '';
-    role.value = 'customer'; 
-    userProfile.value = null; 
+    role.value = 'customer';
+    userProfile.value = null;
     isLoggedIn.value = false;
-    isInitialized.value = false; 
+    isInitialized.value = false;
+    userLocation.value = null;
     localStorage.clear();
-    // 拦截器会自动处理 Authorization header
     console.log("[UserStore] Logout complete.");
-    // if (shouldRedirect && router) { // router instance might not be available here
-    //   router.push('/'); 
-    // }
   };
   
-  // 🟢 修改 login 函数以处理 fetchUserProfile 失败的情况
   const login = async (usernameInput, password) => {
     try {
       const response = await api.post('/api/auth/login', {
@@ -146,108 +204,93 @@ export const useUserStore = defineStore('user', () => {
       });
 
       console.log('[Login Debug] Full response:', response);
-      // 尝试从 header 获取 token
       const receivedToken = response.headers?.['x-new-token'] || response.headers?.['X-New-Token'];
 
       console.log('[Login Debug] Extracted token:', receivedToken ? 'Token Found' : 'Token Not found in headers');
 
       if (!receivedToken) {
-          // 如果 header 没有，可以尝试从 body 获取 (根据后端实际情况调整)
-          // const tokenFromBody = response.data?.data?.token || response.data?.token;
-          // if(tokenFromBody) receivedToken = tokenFromBody; else ...
-          console.error('[Login Debug] Token not found in response headers or body.');
-          throw new Error('Login response did not contain a token.');
+        console.error('[Login Debug] Token not found in response headers.');
+        throw new Error('Login response did not contain a token.');
       }
       
       token.value = receivedToken;
       localStorage.setItem('token', receivedToken);
-      // 立即保存用户名到localStorage，供fetchUserProfile使用
-      username.value = usernameInput;
-      localStorage.setItem('username', usernameInput);
-      // api.defaults.headers.common['Authorization'] = `Bearer ${receivedToken}`; // 拦截器会做
 
       console.log("[UserStore] Login successful, token acquired.");
 
-      // 尝试获取 profile
-      const profile = await fetchUserProfile(); 
+      const profile = await fetchUserProfile();
       
       if (profile) {
-        // Profile 获取成功，fetchUserProfile 内部已更新状态
         console.log("[UserStore] Profile fetched successfully after login.");
-        isLoggedIn.value = true; // 确保状态正确
+        isLoggedIn.value = true;
       } else {
-        // Profile 获取失败 (后端返回 null 或出错)，但我们有 token
-        console.warn("[UserStore] Profile fetch failed after login. Using JWT decode or defaults as fallback.");
-        isLoggedIn.value = true; // 关键：设置登录状态为 true
+        console.warn("[UserStore] Profile fetch failed after login. Using JWT decode fallback.");
+        isLoggedIn.value = true;
 
-        // 尝试解码 JWT 获取信息
         const decodedToken = decodeJwt(receivedToken);
-        let foundInfoInToken = false;
-        if (decodedToken) {
-            console.log("[UserStore] Decoded JWT:", decodedToken);
-            // 假设 'sub' 是用户名/邮箱, 'roles' 或 'authorities' 是角色数组
-            const usernameFromToken = decodedToken.sub; 
-            // 检查常见的角色声明字段
-            const rolesFromToken = decodedToken.roles || decodedToken.authorities || (decodedToken.role ? [decodedToken.role] : []); 
+        const extractedRole = extractRoleFromToken(decodedToken);
+        const usernameFromSub = decodedToken?.sub || usernameInput;
+        const userIdFromToken = decodedToken?.id || decodedToken?.userId;
 
-            if (usernameFromToken) {
-                username.value = usernameFromToken;
-                localStorage.setItem('username', usernameFromToken);
-                
-                // 根据 token 中的角色信息设置 role
-                let assignedRole = 'customer'; // 默认
-                if (Array.isArray(rolesFromToken) && rolesFromToken.length > 0) {
-                   // 检查是否包含商家或管理员角色 (忽略大小写和 ROLE_ 前缀)
-                   if (rolesFromToken.some(r => r.toUpperCase().includes('MERCHANT'))) {
-                       assignedRole = 'merchant';
-                   } else if (rolesFromToken.some(r => r.toUpperCase().includes('ADMIN'))) {
-                       assignedRole = 'admin'; // 如果有管理员角色
-                   } // 可以添加更多角色判断
-                }
-                role.value = assignedRole;
-                localStorage.setItem('role', assignedRole);
-                // 创建基础 profile，包含必要的 id 字段
-                // JWT中没有数字ID，使用已知存在的用户ID
-                const userId = 15; // 使用已知存在的用户ID
-                userProfile.value = { 
-                    id: userId, 
-                    username: username.value, 
-                    role: role.value.toUpperCase() 
-                }; 
-                console.log(`[UserStore] Using info from decoded JWT: User=${username.value}, Role=${role.value}, ID=${userId}`);
-                foundInfoInToken = true;
-            }
-        }
+        username.value = usernameFromSub;
+        localStorage.setItem('username', usernameFromSub);
+        role.value = extractedRole;
+        localStorage.setItem('role', extractedRole);
+        userProfile.value = {
+          id: userIdFromToken || null,
+          username: username.value,
+          role: role.value.toUpperCase()
+        };
+        console.log(`[UserStore] Using fallback info: User=${username.value}, Role=${role.value}, ID from token=${userIdFromToken || 'Not Found'}`);
+      }
 
-        // 如果 JWT 解码失败或未包含足够信息，使用登录输入和默认值
-        if (!foundInfoInToken) {
-            console.log("[UserStore] JWT decode failed or no info found, using login input as fallback.");
-            username.value = usernameInput;
-            localStorage.setItem('username', usernameInput);
-            // 维持默认角色 'customer' 或根据用户名猜测 (不推荐)
-            role.value = 'customer'; 
-            localStorage.setItem('role', 'customer');
-            // 使用已知存在的用户ID（因为后端 /api/user 返回 null）
-            userProfile.value = { 
-                id: 15, // 使用已知存在的用户ID
-                username: username.value, 
-                role: 'CUSTOMER' 
-            }; 
+      if (role.value === 'customer') {
+        try {
+          // 🟢 [FIXED] 移除 await，使其在后台运行
+          getUserLocation();
+        } catch (locationError) {
+          console.warn("[UserStore] Could not get location after login (non-blocking):", locationError);
         }
       }
 
-      isInitialized.value = true; // 标记初始化完成
-      return { success: true }; // 核心修改：只要拿到 token 就返回成功
+      isInitialized.value = true;
+      return { success: true };
 
     } catch (error) {
       console.error('API 登录失败:', error.response?.data || error.message);
       const errorMessage = error.response?.data?.message || error.message || 'An unknown error occurred.';
-      await logout(false); 
+      await logout(false);
       return { success: false, message: errorMessage };
     }
   };
   
-  // 初始化函数
+  const register = async (username, password, role) => {
+    console.log(`[UserStore] Attempting to register as: ${username}, Role: ${role}`);
+    try {
+      const response = await api.post('/api/user/register', {
+        username: username,
+        password: password,
+        role: role.toUpperCase()
+      });
+
+      console.log('[UserStore] Register response:', response.data);
+
+      const successCode = response.data?.code == 1 || response.data?.code == 20000;
+
+      if (successCode) {
+        console.log("[UserStore] Registration successful.");
+        return { success: true };
+      } else {
+        console.error('[UserStore] Registration failed (API logic error):', response.data?.message);
+        return { success: false, message: response.data?.message || 'Registration failed.' };
+      }
+    } catch (error) {
+      console.error('[UserStore] API Registration failed (HTTP error):', error.response?.data || error.message);
+      const errorMessage = error.response?.data?.message || error.message || 'An unknown error occurred.';
+      return { success: false, message: errorMessage };
+    }
+  };
+
   const initialize = async () => {
     if (isInitialized.value) return;
     console.log("[UserStore] Initializing...");
@@ -255,75 +298,64 @@ export const useUserStore = defineStore('user', () => {
     const savedToken = localStorage.getItem('token');
     if (savedToken) {
       token.value = savedToken;
-      // api.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`; // 拦截器会做
       console.log("[UserStore] Found token in localStorage, attempting to fetch profile.");
       
-      const profile = await fetchUserProfile(); // 尝试获取 profile
+      const profile = await fetchUserProfile();
 
       if (!profile) {
-        // 如果获取 profile 失败，但 token 存在，尝试解码 token 获取信息
-        console.warn("[UserStore] Profile fetch failed during init. Using JWT decode or defaults as fallback.");
-        isLoggedIn.value = true; // 关键：设置登录状态为 true
+        console.warn("[UserStore] Profile fetch failed during init. Using JWT decode fallback.");
+        isLoggedIn.value = true;
+        
         const decodedToken = decodeJwt(savedToken);
-        let foundInfoInToken = false;
-        if (decodedToken) {
-            const usernameFromToken = decodedToken.sub;
-            const rolesFromToken = decodedToken.roles || decodedToken.authorities || (decodedToken.role ? [decodedToken.role] : []);
-            if (usernameFromToken) {
-                username.value = usernameFromToken;
-                localStorage.setItem('username', usernameFromToken);
-                let assignedRole = 'customer';
-                if (Array.isArray(rolesFromToken) && rolesFromToken.length > 0) {
-                   if (rolesFromToken.some(r => r.toUpperCase().includes('MERCHANT'))) assignedRole = 'merchant';
-                   else if (rolesFromToken.some(r => r.toUpperCase().includes('ADMIN'))) assignedRole = 'admin';
-                }
-                role.value = assignedRole;
-                localStorage.setItem('role', assignedRole);
-                const userId = decodedToken.userId || decodedToken.id || decodedToken.sub;
-                userProfile.value = { 
-                    id: userId, 
-                    username: username.value, 
-                    role: role.value.toUpperCase() 
-                };
-                console.log(`[UserStore] Using info from decoded JWT during init: User=${username.value}, Role=${role.value}, ID=${userId}`);
-                foundInfoInToken = true;
-            }
-        }
-        // 如果解码失败，尝试使用 localStorage 中可能存在的旧 username/role
-        if (!foundInfoInToken) {
-            console.log("[UserStore] JWT decode failed during init, using localStorage fallback.");
-            username.value = localStorage.getItem('username') || '';
-            role.value = localStorage.getItem('role') || 'customer';
-            userProfile.value = { 
-                id: username.value, // 临时使用用户名作为ID
-                username: username.value, 
-                role: role.value.toUpperCase() 
-            };
+        const extractedRole = extractRoleFromToken(decodedToken);
+        const usernameFromSub = decodedToken?.sub || localStorage.getItem('username') || '';
+        const userIdFromToken = decodedToken?.id || decodedToken?.userId;
+
+        username.value = usernameFromSub;
+        localStorage.setItem('username', usernameFromSub);
+        role.value = extractedRole;
+        localStorage.setItem('role', extractedRole);
+        userProfile.value = {
+          id: userIdFromToken || null,
+          username: username.value,
+          role: role.value.toUpperCase()
+        };
+        console.log(`[UserStore] Using fallback info during init: User=${username.value}, Role=${role.value}, ID from token=${userIdFromToken || 'Not Found'}`);
+      }
+      
+      if (isLoggedIn.value && role.value === 'customer') {
+        try {
+          // 🟢 [FIXED] 移除 await，使其在后台运行
+          getUserLocation();
+        } catch (locationError) {
+          console.warn("[UserStore] Could not get location during init (non-blocking):", locationError);
         }
       }
-      // 如果 profile 获取成功，fetchUserProfile 内部已经设置了 isLoggedIn
-      
+
     } else {
-        console.log("[UserStore] No token found in localStorage during init.");
-        await logout(false); // 确保是登出状态
+      console.log("[UserStore] No token found in localStorage during init.");
+      await logout(false);
     }
-    isInitialized.value = true; // 标记初始化完成
+    isInitialized.value = true;
     console.log("[UserStore] Initialization complete. isLoggedIn:", isLoggedIn.value, "Role:", role.value);
   };
 
   return {
-    token, 
-    username, 
-    role, 
-    userProfile, 
-    isLoggedIn, 
-    isInitialized, 
-    showLoginModal, 
+    token,
+    username,
+    role,
+    userProfile,
+    isLoggedIn,
+    isInitialized,
+    showLoginModal,
+    userLocation,
     
-    login, 
-    logout, 
-    initialize, 
+    login,
+    logout,
+    register,
+    initialize,
     updateUserProfile,
-    fetchUserProfile 
+    fetchUserProfile,
+    getUserLocation
   };
 });

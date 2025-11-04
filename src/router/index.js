@@ -67,6 +67,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/merchant/upgrade',
+    name: 'MerchantUpgrade',
+    component: () => import('@/views/MerchantUpgradeView.vue'),
+    meta: { requiresAuth: true, roles: ['customer'] } // 🟢 只有 customer 可以升级为商家
+  },
+  {
     path: '/admin',
     name: 'AdminDashboard',
     component: () => import('@/views/AdminDashboardView.vue'),

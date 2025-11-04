@@ -181,7 +181,7 @@ const handleLogin = async () => {
     
     let response;
     try {
-      response = await api.post('/auth/login', {
+      response = await api.post('/api/auth/login', {
         username: loginForm.username,
         password: loginForm.password
       });
@@ -238,7 +238,7 @@ const handleLogin = async () => {
     updateStep(4, true, false, '调用 /api/user 获取用户信息');
     
     try {
-      const userResponse = await api.get('/user');
+      const userResponse = await api.get('/api/user');
       console.log('[Admin Login] 用户信息:', userResponse.data);
       
       const userProfile = userResponse.data?.data;
@@ -249,10 +249,12 @@ const handleLogin = async () => {
         // 步骤6: 登录成功
         updateStep(5, true, false, '登录流程完成');
         
-        // 跳转到admin界面
-        setTimeout(() => {
-          router.push('/admin');
-        }, 2000);
+        // 确保用户状态已更新
+        await userStore.initialize();
+        
+        // 立即跳转到admin界面
+        console.log('[Admin Login] Redirecting to /admin, role:', userStore.role);
+        router.push('/admin');
       } else {
         updateStep(4, false, true, '用户信息为空');
         errorMessage.value = '获取用户信息失败';

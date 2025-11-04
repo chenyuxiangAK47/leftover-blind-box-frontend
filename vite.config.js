@@ -14,12 +14,15 @@ export default defineConfig({
     proxy: {
       // 统一以 /api 开头发起请求
       '/api': {
-        target: 'http://13.215.158.65:10016',   // Gateway
+        // [MODIFIED] 更新为本地后端服务地址（如果需要连接本地后端）
+        target: 'http://localhost:10015',
         changeOrigin: true,
         secure: false,
-        // Gateway 配置的路由是 /api/product、/api/auth、/api/user 等
-        // 保留 /api 前缀，直接转发到后端
+        // 你的后端 Controller 是以 /auth /user /product/... 开头，没有 /api 前缀
+        // 因此需要把 "/api" 前缀去掉
+        // [NOTE] 保持注释状态。根据你的 API 列表，后端似乎确实需要 /api 前缀。
         // rewrite: (path) => path.replace(/^\/api/, ''),
+        // 可选：看见代理日志（排查超好用）
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq, req) => {
             console.log('[proxy] ->', req.method, proxyReq.getHeader('host'), req.url)
